@@ -1,32 +1,38 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+from supabase import create_client
 
-# Aquí el robot busca los voluntariados
-def buscar_oportunidades():
-    print("🔎 Iniciando rastreo para Ayni Hub...")
+# Configuración de las "llaves" (GitHub las tomará de los Secrets)
+url_supabase = os.environ.get("SUPABASE_URL")
+key_supabase = os.environ.get("SUPABASE_KEY")
+supabase = create_client(url_supabase, key_supabase)
+
+def buscar_y_guardar():
+    print("🔎 Buscando voluntariados en Proa.pe...")
     url = "https://proa.pe/programas_todos"
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+    soup = BeautifulSoup(response.text, 'html.parser')
     
-    try:
-        response = requests.get(url, headers=headers)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        oportunidades = soup.find_all('h5')
+    # Buscamos los títulos de los voluntariados
+    oportunidades = soup.find_all('h5')
+    
+    for op in oportunidades:
+        titulo = op.get_text().strip()
         
-        lista_final = []
-        for op in oportunidades:
-            nombre = op.get_text().strip()
-            if len(nombre) > 10:
-                lista_final.append(nombre)
-                print(f"✅ Encontrado: {nombre}")
-        
-        return lista_final
-    except Exception as e:
-        print(f"❌ Error al buscar: {e}")
-        return []
+        # Intentamos guardar en la tabla que me mostraste en la foto
+        if len(titulo) > 5:
+            datos = {
+                "título": titulo,
+                "entidad": "Proa.pe",
+                "categoría": "Voluntariado"
+            }
+            # Esto envía el dato a la fila de tu imagen
+            try:
+                supabase.table("oportunidades").insert(datos).execute()
+                print(f"✅ Guardado: {titulo}")
+            except Exception as e:
+                print(f"❌ Error al guardar {titulo}: {e}")
 
-# Por ahora, el robot solo imprime los resultados. 
-# En el siguiente paso lo conectaremos a tu base de datos de Lovable.
 if __name__ == "__main__":
-    resultados = buscar_oportunidades()
-    print(f"\n📊 Total: {len(resultados)} oportunidades encontradas.")
+    buscar_y_guardar()
