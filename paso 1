@@ -1,0 +1,32 @@
+import requests
+from bs4 import BeautifulSoup
+import os
+
+# Aquí el robot busca los voluntariados
+def buscar_oportunidades():
+    print("🔎 Iniciando rastreo para Ayni Hub...")
+    url = "https://proa.pe/programas_todos"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        oportunidades = soup.find_all('h5')
+        
+        lista_final = []
+        for op in oportunidades:
+            nombre = op.get_text().strip()
+            if len(nombre) > 10:
+                lista_final.append(nombre)
+                print(f"✅ Encontrado: {nombre}")
+        
+        return lista_final
+    except Exception as e:
+        print(f"❌ Error al buscar: {e}")
+        return []
+
+# Por ahora, el robot solo imprime los resultados. 
+# En el siguiente paso lo conectaremos a tu base de datos de Lovable.
+if __name__ == "__main__":
+    resultados = buscar_oportunidades()
+    print(f"\n📊 Total: {len(resultados)} oportunidades encontradas.")
