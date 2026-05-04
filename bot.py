@@ -39,7 +39,7 @@ def buscar_voluntariados():
 
 if __name__ == "__main__":
     buscar_voluntariados()
-                print(f"✅ Guardado: {titulo}")
+             print(f"✅ Guardado: {titulo}")
             except Exception as e:
                 print(f"❌ Error al guardar {titulo}: {e}")
 
