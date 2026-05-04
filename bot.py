@@ -3,52 +3,52 @@ import requests
 from bs4 import BeautifulSoup
 from supabase import create_client
 
-# Conexión a tu almacén de NextStep
+# Configuración de conexión con Secrets de GitHub
 url = os.environ.get("SUPABASE_URL")
 key = os.environ.get("SUPABASE_KEY")
 supabase = create_client(url, key)
 
 def buscar_voluntariados():
-    print("🚀 Iniciando búsqueda de oportunidades...")
+    print("🚀 Iniciando búsqueda de oportunidades en Proa...")
     sitio = "https://proa.pe/programas_todos"
     
     try:
-        respuesta = requests.get(sitio, headers={'User-Agent': 'Mozilla/5.0'})
+        # Simulamos un navegador para evitar bloqueos
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        respuesta = requests.get(sitio, headers=headers, timeout=10)
         soup = BeautifulSoup(respuesta.text, 'html.parser')
         
-        # En Proa, los proyectos suelen estar en etiquetas h5 o dentro de cards
-        proyectos = soup.find_all('div', class_='card-body') # Ajustado para captar más info
+        # Intentamos capturar los títulos de los voluntariados
+        elementos = soup.find_all('h5')
+        print(f"📊 Análisis técnico: Se detectaron {len(elementos)} posibles registros.")
 
-        for p in proyectos:
-            try:
-                # Extraemos el título y el link
-                titulo_tag = p.find('h5')
-                link_tag = p.find('a')
-                
-                if titulo_tag and link_tag:
-                    titulo = titulo_tag.get_text().strip()
-                    link = link_tag['href']
-                    
-                    # Si el link es relativo, le agregamos el dominio
-                    if not link.startswith('http'):
-                        link = f"https://proa.pe{link}"
+        for item in elementos:
+            titulo = item.get_text().strip()
+            
+            # Buscamos el link (normalmente está en el elemento padre o abuelo)
+            link_tag = item.find_parent('a') or (item.find_parent().find('a') if item.find_parent() else None)
+            link = link_tag['href'] if link_tag and link_tag.has_attr('href') else "#"
 
-                    data = {
-                        "titulo": titulo,
-                        "entidad": "Proa Perú",
-                        "link": link
-                    }
+            # Limpiamos el link
+            if link != "#" and not link.startswith('http'):
+                link = f"https://proa.pe{link}"
 
-                    # Guardado en tu base de datos de 2 años
+            if len(titulo) > 2:
+                data = {
+                    "titulo": titulo,
+                    "entidad": "Proa Perú",
+                    "link": link
+                }
+
+                try:
+                    # Guardamos en Supabase (si el link existe, lo actualiza)
                     supabase.table("oportunidades").upsert(data, on_conflict='link').execute()
-                    print(f"✅ Guardado: {titulo}")
-
-            except Exception as e:
-                continue # Si falla uno, que siga con el siguiente
+                    print(f"✅ Éxito: {titulo}")
+                except Exception as db_err:
+                    print(f"⚠️ No se pudo guardar '{titulo}': {db_err}")
 
     except Exception as e:
-        print(f"❌ Error en la conexión: {e}")
+        print(f"❌ Error crítico en el robot: {e}")
 
-# Ejecutamos la función
 if __name__ == "__main__":
     buscar_voluntariados()
