@@ -13,17 +13,16 @@ def buscar_becas_pronabec():
     sitio = "https://www.pronabec.gob.pe/becas-vigentes/"
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         respuesta = requests.get(sitio, headers=headers, timeout=15)
         soup = BeautifulSoup(respuesta.text, 'html.parser')
         
-        # Buscamos los títulos de las becas en etiquetas h3
+        # Buscamos los títulos de las becas
         becas = soup.find_all('h3') 
         print(f"📊 Análisis técnico: Se detectaron {len(becas)} posibles becas.")
 
-        for b en becas:
+        for b in becas: # Aquí estaba el error anterior (decía 'en' en lugar de 'in')
             titulo = b.get_text().strip()
-            # Buscamos el link de la beca
             link_tag = b.find('a') or b.find_parent('a')
             link = link_tag['href'] if link_tag else sitio
 
@@ -35,11 +34,10 @@ def buscar_becas_pronabec():
                 }
                 
                 try:
-                    # Guardamos en Supabase
                     supabase.table("oportunidades").upsert(data, on_conflict='link').execute()
                     print(f"✅ Beca guardada: {titulo}")
                 except Exception as db_err:
-                    print(f"⚠️ Error al guardar en DB: {db_err}")
+                    print(f"⚠️ Error en DB: {db_err}")
 
     except Exception as e:
         print(f"❌ Error en el robot: {e}")
