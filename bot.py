@@ -3,61 +3,72 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import os
 
-# 1. Configuración de conexión (Esto usa tus Secrets de GitHub)
+# 1. Configuración de conexión (Usa tus Secrets de GitHub)
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
 def scraping_pronabec():
-    print("🚀 Iniciando búsqueda en Pronabec (Becas Perú)...")
+    print("🚀 Iniciando búsqueda de becas reales en Pronabec...")
     
-    # URL de la sección de becas de Pronabec
+    # URL específica de becas propias
     target_url = "https://www.pronabec.gob.pe/becas-propias/"
     
     try:
         response = requests.get(target_url, timeout=15)
+        response.encoding = 'utf-8' # Para que no salgan símbolos raros
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 2. Buscamos los títulos de las becas
-        # Buscamos en etiquetas h3 y enlaces que suelen tener los nombres
-        oportunidades = soup.find_all(['h3', 'a'])
+        # Buscamos los títulos que suelen estar en etiquetas h3 o enlaces de tarjetas
+        elementos = soup.find_all(['h3', 'a'])
         
         encontrados = 0
-        for op in oportunidades:
-            titulo = op.get_text().strip()
-            link = op.get('href', 'https://www.pronabec.gob.pe')
+        for el in elementos:
+            titulo = el.get_text().strip()
+            link = el.get('href', '')
+
+            # --- FILTRO ANTIRRUIDO (Data Cleaning) ---
+            # Solo aceptamos textos que parezcan nombres de becas
+            palabras_basura = [
+                "derechos reservados", "teléfono", "central", "aliados", 
+                "it looks like", "ver más", "contáctenos", "normas", 
+                "política", "atención", "612-8230", "©", "gob.pe"
+            ]
+
+            # Requisitos: 
+            # 1. Más de 15 letras.
+            # 2. Que NO contenga palabras de la lista negra.
+            # 3. Que contenga la palabra "BECA" o sea un nombre propio largo.
+            es_basura = any(basura in titulo.lower() for basura in palabras_basura)
             
-            # 3. FILTRO INTELIGENTE:
-            # Solo guardamos si el texto es largo y NO tiene palabras de relleno
-            palabras_basura = ["derechos reservados", "ver más", "contáctenos", "inicio", "gob.pe"]
-            
-            if len(titulo) > 15 and not any(basura in titulo.lower() for basura in palabras_basura):
-                # Si el link es relativo, lo completamos
+            if len(titulo) > 15 and not es_basura:
+                # Completar link si es necesario
                 if link.startswith('/'):
-                    link = f"https://www.pronabec.gob.pe{link}"
-                
-                # Preparamos el dato para la tabla
+                    full_link = f"https://www.pronabec.gob.pe{link}"
+                elif link.startswith('http'):
+                    full_link = link
+                else:
+                    full_link = "https://www.pronabec.gob.pe/becas-propias/"
+
+                # Preparar datos para Supabase
                 data = {
                     "titulo": titulo,
                     "entidad": "PRONABEC",
-                    "link": link
+                    "link": full_link
                 }
                 
-                # 4. Guardado en Supabase (usando upsert para no repetir links)
                 try:
+                    # El 'upsert' evitará que se dupliquen si el 'link' es el mismo
                     supabase.table("oportunidades").upsert(data).execute()
-                    print(f"✅ Beca guardada: {titulo}")
+                    print(f"✅ Oportunidad válida guardada: {titulo}")
                     encontrados += 1
                 except Exception as e:
-                    print(f"⚠️ Error al guardar: {e}")
+                    print(f"⚠️ Error al guardar en DB: {e}")
         
-        if encontrados == 0:
-            print("📊 Análisis: No se encontraron becas nuevas con los filtros actuales.")
-        else:
-            print(f"🎉 ¡Éxito! Se procesaron {encontrados} registros.")
+        print(f"\n--- Finalizado: Se agregaron {encontrados} registros válidos ---")
 
     except Exception as e:
-        print(f"❌ Error de conexión: {e}")
+        print(f"❌ Error crítico en el bot: {e}")
 
 if __name__ == "__main__":
     scraping_pronabec()
