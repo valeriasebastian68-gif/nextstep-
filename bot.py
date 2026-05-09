@@ -2,16 +2,30 @@ import requests
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import os
+import re # Para buscar fechas
 
-# 1. Configuración de conexión
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
+def extraer_fecha(texto):
+    # Busca formatos como 30/05/2026 o 30-05-2026
+    patron = r'\d{2}[/-]\d{2}[/-]\d{4}'
+    resultado = re.search(patron, texto)
+    return resultado.group(0) if resultado else "Por definir"
+
+def categorizar_beca(titulo):
+    t = titulo.upper()
+    if "POSGRADO" in t or "MAESTRÍA" in t or "DOCTORADO" in t:
+        return "Posgrado"
+    if "MOVILIDAD" in t or "INTERCAMBIO" in t:
+        return "Internacional"
+    if "TALENTO" in t or "18" in t or "DOCENTE" in t:
+        return "Pregrado / Nacional"
+    return "General"
+
 def scraping_pronabec():
-    print("🚀 Buscando exclusivamente Becas y Créditos...")
-    
-    # Esta es la URL donde Pronabec lista sus convocatorias
+    print("🧠 Ejecutando NextStep: Categorización y Fechas...")
     target_url = "https://www.pronabec.gob.pe/becas-propias/"
     
     try:
@@ -20,50 +34,37 @@ def scraping_pronabec():
         response.encoding = 'utf-8'
         soup = BeautifulSoup(response.text, 'html.parser')
         
-        # 2. EL CAMBIO CLAVE: Buscamos dentro de los contenedores de las becas
-        # Pronabec suele usar h3 para los nombres de las becas en sus tarjetas
-        oportunidades = soup.find_all(['h3', 'h2', 'a'])
+        elementos = soup.find_all(['h3', 'a', 'p']) # Agregamos 'p' para buscar fechas en párrafos
         
         encontrados = 0
-        for op in oportunidades:
-            titulo = op.get_text().strip()
-            link = op.get('href', '')
+        for el in elementos:
+            titulo = el.get_text().strip()
+            link = el.get('href', '')
 
-            # --- FILTRO DE CALIDAD "NEXTSTEP" ---
-            # Solo guardamos si es una BECA o un CRÉDITO real
-            es_beca_real = "BECA" in titulo.upper() or "CRÉDITO" in titulo.upper() or "CREDITO" in titulo.upper()
-            
-            # Lista negra para evitar textos legales o de menú
-            palabras_basura = ["derechos", "teléfono", "central", "aliados", "política", "atención"]
-            es_basura = any(basura in titulo.lower() for basura in palabras_basura)
-
-            if es_beca_real and not es_basura and len(titulo) > 5:
-                # Limpiar el link
+            if ("BECA" in titulo.upper() or "CRÉDITO" in titulo.upper()) and len(titulo) < 100:
+                # Intentamos buscar una fecha cerca del título
+                fecha = extraer_fecha(el.parent.get_text()) 
+                categoria = categorizar_beca(titulo)
+                
                 if link.startswith('/'):
                     link = f"https://www.pronabec.gob.pe{link}"
-                elif not link.startswith('http'):
-                    link = "https://www.pronabec.gob.pe/becas-propias/"
 
                 data = {
                     "titulo": titulo,
                     "entidad": "PRONABEC",
-                    "link": link
+                    "link": link,
+                    "fecha_limite": fecha,
+                    "categorias": [categoria] # Lo enviamos como lista para tu columna text[]
                 }
                 
                 try:
                     supabase.table("oportunidades").upsert(data).execute()
-                    print(f"✅ BECA ENCONTRADA: {titulo}")
+                    print(f"📍 {categoria} | {titulo} | Cierra: {fecha}")
                     encontrados += 1
                 except Exception as e:
-                    print(f"⚠️ Error en DB: {e}")
+                    print(f"⚠️ Error DB: {e}")
         
-        if encontrados == 0:
-            print("⚠️ El bot no detectó palabras clave (BECA/CRÉDITO). Revisando estructura...")
-            # Intento secundario si la página cambió de formato
-            for link_alt in soup.find_all('a', href=True):
-                txt = link_alt.get_text().strip()
-                if "BECA" in txt.upper() and len(txt) < 100:
-                    print(f"🎯 Hallazgo alternativo: {txt}")
+        print(f"\n✅ Proceso terminado. {encontrados} becas categorizadas.")
         
     except Exception as e:
         print(f"❌ Error: {e}")
